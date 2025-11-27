@@ -1,10 +1,26 @@
 import { jsPDF } from 'jspdf';
 import JSZip from 'jszip';
-import saveAs from 'file-saver';
+
+// Helper for downloading files without external dependencies
+const saveAs = (blob: Blob, name: string) => {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+};
 
 // --- PDF Generator ---
 export const generatePDF = (text: string, title: string) => {
-  const doc = new jsPDF();
+  // Orientation 'p' (portrait), unit 'mm', format 'a4'
+  const doc = new jsPDF({
+    orientation: 'p',
+    unit: 'mm',
+    format: 'a4'
+  });
   
   // Configs
   const marginLeft = 20;
@@ -42,7 +58,9 @@ export const generatePDF = (text: string, title: string) => {
     cursorY += lineHeight;
   }
 
-  doc.save(`${title.replace(/\s+/g, '_').toLowerCase()}.pdf`);
+  // Save manually to avoid 'file-saver' dependency issues in some environments
+  const pdfBlob = doc.output('blob');
+  saveAs(pdfBlob, `${title.replace(/\s+/g, '_').toLowerCase()}.pdf`);
 };
 
 // --- EPUB Generator ---

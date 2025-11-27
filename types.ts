@@ -1,8 +1,5 @@
 export enum AIActionType {
   CORRECT = 'CORRECT',
-  IMPROVE = 'IMPROVE',
-  SUMMARIZE = 'SUMMARIZE',
-  EXPAND = 'EXPAND',
   TRANSLATE_EN = 'TRANSLATE_EN'
 }
 

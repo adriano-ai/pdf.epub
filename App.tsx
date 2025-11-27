@@ -1,11 +1,12 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { FileText, Download, Wand2, Eraser, Settings, Book, FileType } from 'lucide-react';
+import { FileText, Download, Wand2, Eraser, Settings, Book, FileType, Upload } from 'lucide-react';
 import Header from './components/Header';
 import Button from './components/Button';
 import Toast from './components/Toast';
 import { AIActionType, ToastMessage } from './types';
 import { processTextWithAI } from './services/geminiService';
 import { generatePDF, generateEPUB } from './utils/generators';
+import { extractTextFromPDF } from './utils/pdfReader';
 
 function App() {
   const [text, setText] = useState<string>('');
@@ -15,6 +16,7 @@ function App() {
   const [wordCount, setWordCount] = useState<number>(0);
   
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const addToast = (message: string, type: 'success' | 'error' | 'info') => {
     const id = Math.random().toString(36).substring(2, 9);
@@ -58,6 +60,7 @@ function App() {
       generatePDF(text, title);
       addToast("PDF gerado com sucesso!", "success");
     } catch (e) {
+      console.error(e);
       addToast("Erro ao gerar PDF", "error");
     }
   };
@@ -71,8 +74,62 @@ function App() {
       await generateEPUB(text, title);
       addToast("EPUB gerado com sucesso!", "success");
     } catch (e) {
+      console.error(e);
       addToast("Erro ao gerar EPUB", "error");
     }
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (file.type !== 'application/pdf') {
+      addToast("Por favor, selecione um arquivo PDF.", "error");
+      return;
+    }
+
+    setIsProcessing(true);
+    try {
+      const extractedText = await extractTextFromPDF(file);
+      
+      if (!extractedText || extractedText.trim().length === 0) {
+        addToast("Nenhum texto encontrado. O PDF pode ser uma imagem (scaneado).", "info");
+      } else {
+        // Se já tiver texto, confirma se quer substituir ou adicionar
+        if (text.trim().length > 0) {
+            if (window.confirm("Deseja substituir o texto atual pelo conteúdo do PDF? Cancelar irá adicionar ao final.")) {
+                setText(extractedText);
+                setTitle(file.name.replace('.pdf', ''));
+            } else {
+                setText(prev => prev + "\n\n" + extractedText);
+            }
+        } else {
+            setText(extractedText);
+            setTitle(file.name.replace('.pdf', ''));
+        }
+        
+        // Atualiza contagem
+        // Pequeno delay para garantir que o estado atualizou
+        setTimeout(() => {
+           setWordCount(extractedText.trim().split(/\s+/).length); 
+        }, 100);
+
+        addToast("PDF importado com sucesso!", "success");
+      }
+    } catch (error) {
+      console.error(error);
+      addToast("Erro ao ler o PDF.", "error");
+    } finally {
+      setIsProcessing(false);
+      // Limpa o input para permitir selecionar o mesmo arquivo novamente se necessário
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const triggerFileUpload = () => {
+    fileInputRef.current?.click();
   };
 
   const clearText = () => {
@@ -106,37 +163,34 @@ function App() {
 
         {/* Action Toolbar */}
         <div className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex flex-wrap gap-2 items-center justify-between sticky top-20 z-40 transition-shadow duration-300">
-          <div className="flex flex-wrap gap-2">
-            <div className="group relative">
-               <Button 
-                variant="primary" 
-                icon={<Wand2 className="w-4 h-4" />}
-                onClick={() => handleAIAction(AIActionType.IMPROVE)}
-                isLoading={isProcessing}
-                className="w-full sm:w-auto"
-              >
-                Melhorar Texto
-              </Button>
-            </div>
-            
+          <div className="flex flex-wrap gap-2 w-full sm:w-auto">
+             {/* Hidden File Input */}
+             <input 
+              type="file" 
+              ref={fileInputRef} 
+              onChange={handleFileUpload} 
+              accept=".pdf" 
+              className="hidden" 
+            />
             <Button 
               variant="outline" 
-              onClick={() => handleAIAction(AIActionType.CORRECT)}
-              disabled={isProcessing}
-              className="hidden sm:inline-flex"
+              icon={<Upload className="w-4 h-4" />}
+              onClick={triggerFileUpload}
+              title="Carregar arquivo PDF"
             >
-              Corrigir Gramática
+              Abrir PDF
             </Button>
-            
-            <div className="h-8 w-px bg-slate-200 mx-1 hidden sm:block"></div>
+
+            <div className="w-px h-8 bg-slate-200 mx-1 hidden sm:block"></div>
 
             <Button 
-              variant="outline" 
-              onClick={() => handleAIAction(AIActionType.SUMMARIZE)}
-              disabled={isProcessing}
-              title="Resumir"
+              variant="primary" 
+              icon={<Wand2 className="w-4 h-4" />}
+              onClick={() => handleAIAction(AIActionType.CORRECT)}
+              isLoading={isProcessing}
+              className="w-full sm:w-auto"
             >
-              Resumir
+              Corrigir Gramática
             </Button>
           </div>
 
@@ -187,30 +241,12 @@ function App() {
             <div className="absolute inset-0 bg-white/80 backdrop-blur-[1px] flex items-center justify-center rounded-xl z-10">
               <div className="flex flex-col items-center">
                 <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600 mb-3"></div>
-                <p className="text-sm font-medium text-emerald-800 animate-pulse">A IA está trabalhando...</p>
+                <p className="text-sm font-medium text-emerald-800 animate-pulse">
+                  Processando...
+                </p>
               </div>
             </div>
           )}
-        </div>
-
-        {/* Mobile-only secondary actions */}
-        <div className="sm:hidden grid grid-cols-2 gap-3">
-          <Button 
-            variant="outline" 
-            onClick={() => handleAIAction(AIActionType.CORRECT)}
-            disabled={isProcessing}
-            className="w-full justify-center"
-          >
-            Corrigir
-          </Button>
-          <Button 
-            variant="outline" 
-            onClick={() => handleAIAction(AIActionType.EXPAND)}
-            disabled={isProcessing}
-            className="w-full justify-center"
-          >
-            Expandir
-          </Button>
         </div>
 
       </main>
