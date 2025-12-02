@@ -20,11 +20,11 @@ interface PDFTextContent {
 
 export const extractTextFromPDF = async (file: File): Promise<string> => {
   try {
-    // TÉCNICA "FAIL-SAFE" PARA VERCEL/BUNDLERS:
-    // Usamos 'new Function' para evitar que o bundler (Webpack/Vite) tente resolver 'pdfjs-dist' 
-    // durante o build (npm run build), o que causaria erro pois a lib não está no package.json.
-    // O navegador executará isso normalmente em tempo de execução usando o importmap do index.html.
-    const loadPdfLib = new Function('return import("pdfjs-dist")');
+    // TÉCNICA "FAIL-SAFE" (SEGURANÇA MÁXIMA) PARA DEPLOY:
+    // Usamos a URL completa da CDN dentro do new Function.
+    // Isso garante que o navegador baixe o arquivo exato, sem depender do importmap
+    // e sem que o processo de build da Vercel tente analisar essa dependência.
+    const loadPdfLib = new Function('return import("https://aistudiocdn.com/pdfjs-dist@4.0.379/build/pdf.min.mjs")');
     const pdfjsLib = await loadPdfLib();
 
     // Configura o Worker explicitamente
@@ -48,16 +48,14 @@ export const extractTextFromPDF = async (file: File): Promise<string> => {
       // --- ALGORITMO DE RECONSTRUÇÃO DE LAYOUT ---
 
       // 1. Ordenação Inicial: Topo -> Baixo (Y desc), depois Esquerda -> Direita (X asc)
-      // A coordenada Y no PDF geralmente cresce de baixo para cima, então maior Y = topo da página.
       items.sort((a: any, b: any) => {
         const yA = a.transform[5];
         const yB = b.transform[5];
         
-        // Se a diferença vertical for muito pequena, estão na mesma linha
         if (Math.abs(yA - yB) < 5) {
           return a.transform[4] - b.transform[4]; // Ordena por X
         }
-        return yB - yA; // Ordena por Y decrescente (topo primeiro)
+        return yB - yA; // Ordena por Y decrescente
       });
 
       // 2. Agrupamento em Linhas Visuais
@@ -66,7 +64,6 @@ export const extractTextFromPDF = async (file: File): Promise<string> => {
       let currentY = -1;
 
       for (const item of items) {
-        // Ignora itens vazios que são apenas espaçamento no PDF
         if (!item.str.trim()) continue;
 
         const itemY = item.transform[5];
@@ -75,11 +72,9 @@ export const extractTextFromPDF = async (file: File): Promise<string> => {
           currentLine.push(item);
           currentY = itemY;
         } else {
-          // Se a distância vertical for pequena, pertence à mesma linha
           if (Math.abs(itemY - currentY) < 6) {
              currentLine.push(item);
           } else {
-             // Fecha a linha anterior e começa uma nova
              lines.push(currentLine);
              currentLine = [item];
              currentY = itemY;
@@ -88,33 +83,30 @@ export const extractTextFromPDF = async (file: File): Promise<string> => {
       }
       if (currentLine.length > 0) lines.push(currentLine);
 
-      // 3. Processamento de Texto e Espaçamento Vertical (Parágrafos)
+      // 3. Processamento de Texto e Espaçamento (Parágrafos)
       let pageText = '';
       
       for (let j = 0; j < lines.length; j++) {
         const line = lines[j];
         
-        // Reordena itens dentro da linha por X para garantir leitura correta
+        // Reordena itens dentro da linha por X
         line.sort((a, b) => a.transform[4] - b.transform[4]);
         
-        const lineString = line.map(item => item.str).join(' '); // Junta fragmentos da linha
+        const lineString = line.map(item => item.str).join(' ');
 
         if (j > 0) {
           const prevLine = lines[j - 1];
           const prevY = prevLine[0].transform[5];
           const currY = line[0].transform[5];
           
-          // Calcula a distância vertical entre esta linha e a anterior
           const diffY = prevY - currY;
-          
-          // Estima a altura da fonte da linha anterior (transform[3] é scaleY ~= font size)
           const prevHeight = prevLine[0].transform[3] || 10;
 
-          // Se o espaço for significativamente maior que a altura da linha (ex: > 1.8x), é um novo parágrafo
+          // Detecta parágrafo se o espaço for maior que ~1.8x a altura da linha
           if (diffY > (prevHeight * 1.8)) {
-            pageText += '\n\n'; // Parágrafo
+            pageText += '\n\n'; 
           } else {
-            pageText += '\n'; // Apenas quebra de linha visual
+            pageText += '\n'; 
           }
         }
 
@@ -127,6 +119,6 @@ export const extractTextFromPDF = async (file: File): Promise<string> => {
     return fullText.trim();
   } catch (error) {
     console.error("Erro ao ler PDF:", error);
-    throw new Error("Não foi possível ler o arquivo PDF. O arquivo pode estar corrompido ou ser uma imagem.");
+    throw new Error("Não foi possível ler o arquivo PDF. Verifique se o arquivo não está corrompido.");
   }
 };
