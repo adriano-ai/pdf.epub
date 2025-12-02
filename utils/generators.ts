@@ -1,6 +1,3 @@
-import { jsPDF } from 'jspdf';
-import JSZip from 'jszip';
-
 // Helper for downloading files without external dependencies
 const saveAs = (blob: Blob, name: string) => {
   const url = URL.createObjectURL(blob);
@@ -14,7 +11,11 @@ const saveAs = (blob: Blob, name: string) => {
 };
 
 // --- PDF Generator ---
-export const generatePDF = (text: string, title: string) => {
+export const generatePDF = async (text: string, title: string) => {
+  // Dynamic Import: Carrega a biblioteca apenas quando o botão é clicado
+  // Isso previne a tela branca na inicialização
+  const { jsPDF } = await import('jspdf');
+
   // Orientation 'p' (portrait), unit 'mm', format 'a4'
   const doc = new jsPDF({
     orientation: 'p',
@@ -58,13 +59,17 @@ export const generatePDF = (text: string, title: string) => {
     cursorY += lineHeight;
   }
 
-  // Save manually to avoid 'file-saver' dependency issues in some environments
+  // Save manually to avoid 'file-saver' dependency issues
   const pdfBlob = doc.output('blob');
   saveAs(pdfBlob, `${title.replace(/\s+/g, '_').toLowerCase()}.pdf`);
 };
 
 // --- EPUB Generator ---
 export const generateEPUB = async (text: string, title: string) => {
+  // Dynamic Import: Carrega a biblioteca apenas quando necessário
+  const JSZipModule = await import('jszip');
+  const JSZip = JSZipModule.default;
+
   const zip = new JSZip();
   const cleanTitle = title.replace(/[^\w\s]/gi, '');
   const uuid = 'urn:uuid:' + crypto.randomUUID();

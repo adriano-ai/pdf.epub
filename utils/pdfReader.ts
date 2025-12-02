@@ -1,5 +1,4 @@
-
-// Define a interface para o objeto PDFDocumentProxy
+// Interfaces para tipagem do PDF.js (quando carregado no window)
 interface PDFDocumentProxy {
   numPages: number;
   getPage: (pageNumber: number) => Promise<PDFPageProxy>;
@@ -18,22 +17,54 @@ interface PDFTextContent {
   }>;
 }
 
-export const extractTextFromPDF = async (file: File): Promise<string> => {
-  try {
-    // TÉCNICA "FAIL-SAFE" (SEGURANÇA MÁXIMA) PARA DEPLOY:
-    // Usamos a URL completa da CDN dentro do new Function.
-    // Isso garante que o navegador baixe o arquivo exato, sem depender do importmap
-    // e sem que o processo de build da Vercel tente analisar essa dependência.
-    const loadPdfLib = new Function('return import("https://aistudiocdn.com/pdfjs-dist@4.0.379/build/pdf.min.mjs")');
-    const pdfjsLib = await loadPdfLib();
+// Declaração global para o TypeScript entender que pdfjsLib existe no window
+declare global {
+  interface Window {
+    pdfjsLib: any;
+  }
+}
 
-    // Configura o Worker explicitamente
-    if (pdfjsLib.GlobalWorkerOptions) {
-      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://aistudiocdn.com/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';
+// URL segura e estável (CDNJS) para o PDF.js
+const PDFJS_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js";
+const WORKER_URL = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+// Função para carregar o script dinamicamente (Script Injection)
+const loadPdfLibrary = (): Promise<void> => {
+  return new Promise((resolve, reject) => {
+    if (window.pdfjsLib) {
+      resolve();
+      return;
     }
 
+    const script = document.createElement('script');
+    script.src = PDFJS_URL;
+    script.type = 'text/javascript';
+    script.async = true;
+    
+    script.onload = () => {
+      // Configura o worker assim que carregar
+      if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = WORKER_URL;
+        resolve();
+      } else {
+        reject(new Error("PDF.js loaded but object not found"));
+      }
+    };
+    
+    script.onerror = () => reject(new Error("Failed to load PDF.js script"));
+    document.head.appendChild(script);
+  });
+};
+
+export const extractTextFromPDF = async (file: File): Promise<string> => {
+  try {
+    // 1. Garante que a biblioteca está carregada
+    await loadPdfLibrary();
+
     const arrayBuffer = await file.arrayBuffer();
-    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+    
+    // 2. Carrega o documento usando a variável global
+    const loadingTask = window.pdfjsLib.getDocument({ data: arrayBuffer });
     const pdf: PDFDocumentProxy = await loadingTask.promise;
 
     let fullText = '';
@@ -45,7 +76,7 @@ export const extractTextFromPDF = async (file: File): Promise<string> => {
 
       if (!items || items.length === 0) continue;
 
-      // --- ALGORITMO DE RECONSTRUÇÃO DE LAYOUT ---
+      // --- ALGORITMO DE RECONSTRUÇÃO DE LAYOUT (Mantido como solicitado) ---
 
       // 1. Ordenação Inicial: Topo -> Baixo (Y desc), depois Esquerda -> Direita (X asc)
       items.sort((a: any, b: any) => {
@@ -72,6 +103,7 @@ export const extractTextFromPDF = async (file: File): Promise<string> => {
           currentLine.push(item);
           currentY = itemY;
         } else {
+          // Tolerância de 6 unidades para considerar mesma linha
           if (Math.abs(itemY - currentY) < 6) {
              currentLine.push(item);
           } else {
@@ -89,7 +121,7 @@ export const extractTextFromPDF = async (file: File): Promise<string> => {
       for (let j = 0; j < lines.length; j++) {
         const line = lines[j];
         
-        // Reordena itens dentro da linha por X
+        // Reordena itens dentro da linha por X para garantir leitura correta da frase
         line.sort((a, b) => a.transform[4] - b.transform[4]);
         
         const lineString = line.map(item => item.str).join(' ');
@@ -102,12 +134,15 @@ export const extractTextFromPDF = async (file: File): Promise<string> => {
           const diffY = prevY - currY;
           const prevHeight = prevLine[0].transform[3] || 10;
 
-          // Detecta parágrafo se o espaço for maior que ~1.8x a altura da linha
+          // Se o espaço vertical for significativo (> 1.8x a altura da linha), cria parágrafo
           if (diffY > (prevHeight * 1.8)) {
             pageText += '\n\n'; 
           } else {
             pageText += '\n'; 
           }
+        } else {
+          // Primeira linha da página
+          if (pageText.length > 0) pageText += '\n';
         }
 
         pageText += lineString;
@@ -119,6 +154,6 @@ export const extractTextFromPDF = async (file: File): Promise<string> => {
     return fullText.trim();
   } catch (error) {
     console.error("Erro ao ler PDF:", error);
-    throw new Error("Não foi possível ler o arquivo PDF. Verifique se o arquivo não está corrompido.");
+    throw new Error("Não foi possível ler o arquivo PDF. O arquivo pode estar protegido ou corrompido.");
   }
 };

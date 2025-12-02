@@ -51,17 +51,20 @@ function App() {
     }
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
     if (!text.trim()) {
       addToast("Nada para exportar!", "error");
       return;
     }
+    setIsProcessing(true);
     try {
-      generatePDF(text, title);
+      await generatePDF(text, title);
       addToast("PDF gerado com sucesso!", "success");
     } catch (e) {
       console.error(e);
       addToast("Erro ao gerar PDF", "error");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -70,12 +73,15 @@ function App() {
       addToast("Nada para exportar!", "error");
       return;
     }
+    setIsProcessing(true);
     try {
       await generateEPUB(text, title);
       addToast("EPUB gerado com sucesso!", "success");
     } catch (e) {
       console.error(e);
       addToast("Erro ao gerar EPUB", "error");
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -109,7 +115,6 @@ function App() {
         }
         
         // Atualiza contagem
-        // Pequeno delay para garantir que o estado atualizou
         setTimeout(() => {
            setWordCount(extractedText.trim().split(/\s+/).length); 
         }, 100);
@@ -177,6 +182,7 @@ function App() {
               icon={<Upload className="w-4 h-4" />}
               onClick={triggerFileUpload}
               title="Carregar arquivo PDF"
+              isLoading={isProcessing && text === ''} // Mostra loading se estiver processando arquivo
             >
               Abrir PDF
             </Button>
@@ -187,7 +193,7 @@ function App() {
               variant="primary" 
               icon={<Wand2 className="w-4 h-4" />}
               onClick={() => handleAIAction(AIActionType.CORRECT)}
-              isLoading={isProcessing}
+              isLoading={isProcessing && text !== ''}
               className="w-full sm:w-auto"
             >
               Corrigir Gramática
@@ -200,6 +206,7 @@ function App() {
               icon={<FileType className="w-4 h-4" />}
               onClick={handleExportPDF}
               title="Exportar PDF"
+              isLoading={isProcessing}
             >
               PDF
             </Button>
@@ -208,6 +215,7 @@ function App() {
               icon={<Book className="w-4 h-4" />}
               onClick={handleExportEPUB}
               title="Exportar EPUB"
+              isLoading={isProcessing}
             >
               EPUB
             </Button>
