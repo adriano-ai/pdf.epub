@@ -12,9 +12,9 @@ const saveAs = (blob: Blob, name: string) => {
 
 // --- PDF Generator ---
 export const generatePDF = async (text: string, title: string) => {
-  // Dynamic Import: Carrega a biblioteca apenas quando o botão é clicado
-  // Isso previne a tela branca na inicialização
-  const { jsPDF } = await import('jspdf');
+  // Usamos jsPDF 2.5.1 via CDN ESM porque é a versão mais estável para browsers sem build system.
+  // A versão 3.x frequentemente causa erros de "default export" em imports dinâmicos puros.
+  const { jsPDF } = await import('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/+esm');
 
   // Orientation 'p' (portrait), unit 'mm', format 'a4'
   const doc = new jsPDF({
@@ -66,9 +66,11 @@ export const generatePDF = async (text: string, title: string) => {
 
 // --- EPUB Generator ---
 export const generateEPUB = async (text: string, title: string) => {
-  // Dynamic Import: Carrega a biblioteca apenas quando necessário
-  const JSZipModule = await import('jszip');
-  const JSZip = JSZipModule.default;
+  // Importação direta da versão ESM do JSZip
+  const JSZipModule = await import('https://cdn.jsdelivr.net/npm/jszip@3.10.1/+esm');
+  // Dependendo do empacotamento da CDN, o export pode ser o default ou o módulo em si. 
+  // O código abaixo garante que pegamos o construtor correto.
+  const JSZip = JSZipModule.default || JSZipModule;
 
   const zip = new JSZip();
   const cleanTitle = title.replace(/[^\w\s]/gi, '');
