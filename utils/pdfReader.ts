@@ -1,3 +1,4 @@
+
 // Define a interface para o objeto PDFDocumentProxy
 interface PDFDocumentProxy {
   numPages: number;
@@ -19,11 +20,17 @@ interface PDFTextContent {
 
 export const extractTextFromPDF = async (file: File): Promise<string> => {
   try {
-    // @ts-ignore
-    const pdfjsLib = await import('pdfjs-dist');
+    // TÉCNICA "FAIL-SAFE" PARA VERCEL/BUNDLERS:
+    // Usamos 'new Function' para evitar que o bundler (Webpack/Vite) tente resolver 'pdfjs-dist' 
+    // durante o build (npm run build), o que causaria erro pois a lib não está no package.json.
+    // O navegador executará isso normalmente em tempo de execução usando o importmap do index.html.
+    const loadPdfLib = new Function('return import("pdfjs-dist")');
+    const pdfjsLib = await loadPdfLib();
 
     // Configura o Worker explicitamente
-    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://aistudiocdn.com/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';
+    if (pdfjsLib.GlobalWorkerOptions) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://aistudiocdn.com/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';
+    }
 
     const arrayBuffer = await file.arrayBuffer();
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
@@ -42,7 +49,7 @@ export const extractTextFromPDF = async (file: File): Promise<string> => {
 
       // 1. Ordenação Inicial: Topo -> Baixo (Y desc), depois Esquerda -> Direita (X asc)
       // A coordenada Y no PDF geralmente cresce de baixo para cima, então maior Y = topo da página.
-      items.sort((a, b) => {
+      items.sort((a: any, b: any) => {
         const yA = a.transform[5];
         const yB = b.transform[5];
         
